@@ -53,9 +53,9 @@
 using namespace CLMTracker;
 using namespace cv;
 
-// Getting a head pose estimate from the currently detected landmarks (rotation with respect to camera)
+// Getting a head pose estimate from the currently detected landmarks (rotation with respect to point camera)
 // The format returned is [Tx, Ty, Tz, Eul_x, Eul_y, Eul_z]
-Vec6d CLMTracker::GetPoseCamera(CLM& clm_model, double fx, double fy, double cx, double cy, CLMParameters& params)
+Vec6d CLMTracker::GetPoseCamera(const CLM& clm_model, double fx, double fy, double cx, double cy)
 {
 	if(!clm_model.detected_landmarks.empty() && clm_model.params_global[0] != 0)
 	{
@@ -72,11 +72,11 @@ Vec6d CLMTracker::GetPoseCamera(CLM& clm_model, double fx, double fy, double cx,
 	}
 }
 
-// Getting a head pose estimate from the currently detected landmarks (rotation with respect to camera plane)
+// Getting a head pose estimate from the currently detected landmarks (rotation in world coordinates)
 // The format returned is [Tx, Ty, Tz, Eul_x, Eul_y, Eul_z]
-Vec6d CLMTracker::GetPoseCameraPlane(CLM& clm_model, double fx, double fy, double cx, double cy, CLMParameters& params)
+Vec6d CLMTracker::GetPoseWorld(const CLM& clm_model, double fx, double fy, double cx, double cy)
 {
-	if(!clm_model.detected_landmarks.empty() && clm_model.params_global[0] != 0 && clm_model.tracking_initialised)
+	if(!clm_model.detected_landmarks.empty() && clm_model.params_global[0] != 0)
 	{
 		double Z = fx / clm_model.params_global[0];
 	
@@ -107,11 +107,11 @@ Vec6d CLMTracker::GetPoseCameraPlane(CLM& clm_model, double fx, double fy, doubl
 
 // Getting a head pose estimate from the currently detected landmarks, with appropriate correction due to orthographic camera issue
 // This is because rotation estimate under orthographic assumption is only correct close to the centre of the image
-// This method returns a corrected pose estimate with respect to the camera plane (Experimental)
+// This method returns a corrected pose estimate with respect to world coordinates (Experimental)
 // The format returned is [Tx, Ty, Tz, Eul_x, Eul_y, Eul_z]
-Vec6d CLMTracker::GetCorrectedPoseCameraPlane(CLM& clm_model, double fx, double fy, double cx, double cy, CLMParameters& params)
+Vec6d CLMTracker::GetCorrectedPoseWorld(const CLM& clm_model, double fx, double fy, double cx, double cy)
 {
-	if(!clm_model.detected_landmarks.empty() && clm_model.params_global[0] != 0 && clm_model.tracking_initialised)
+	if(!clm_model.detected_landmarks.empty() && clm_model.params_global[0] != 0)
 	{
 		// This is used as an initial estimate for the iterative PnP algorithm
 		double Z = fx / clm_model.params_global[0];
@@ -152,11 +152,10 @@ Vec6d CLMTracker::GetCorrectedPoseCameraPlane(CLM& clm_model, double fx, double 
 	}
 }
 
-// Getting a head pose estimate from the currently detected landmarks, with appropriate correction due to orthographic camera issue
-// This is because rotation estimate under orthographic assumption is only correct close to the centre of the image
-// This method returns a corrected pose estimate with respect to a point camera (NOTE not the camera plane) (Experimental)
+// Getting a head pose estimate from the currently detected landmarks, with appropriate correction due to perspective projection
+// This method returns a corrected pose estimate with respect to a point camera (NOTE not the world coordinates) (Experimental)
 // The format returned is [Tx, Ty, Tz, Eul_x, Eul_y, Eul_z]
-Vec6d CLMTracker::GetCorrectedPoseCamera(CLM& clm_model, double fx, double fy, double cx, double cy, CLMParameters& params)
+Vec6d CLMTracker::GetCorrectedPoseCamera(const CLM& clm_model, double fx, double fy, double cx, double cy)
 {
 	if(!clm_model.detected_landmarks.empty() && clm_model.params_global[0] != 0)
 	{
@@ -473,10 +472,22 @@ bool CLMTracker::DetectLandmarksInImage(const Mat_<uchar> &grayscale_image, cons
 	Mat_<double> best_landmark_likelihoods;
 	bool best_success;
 
+	// The hierarchical model parameters
+	vector<double> best_likelihood_h(clm_model.hierarchical_models.size());
+	vector<Vec6d> best_global_parameters_h(clm_model.hierarchical_models.size());
+	vector<Mat_<double>> best_local_parameters_h(clm_model.hierarchical_models.size());
+	vector<Mat_<double>> best_detected_landmarks_h(clm_model.hierarchical_models.size());
+	vector<Mat_<double>> best_landmark_likelihoods_h(clm_model.hierarchical_models.size());
+
 	for(size_t hypothesis = 0; hypothesis < rotation_hypotheses.size(); ++hypothesis)
 	{
 		// Reset the potentially set clm_model parameters
 		clm_model.params_local.setTo(0.0);
+
+		for (size_t part = 0; part < clm_model.hierarchical_models.size(); ++part)
+		{
+			clm_model.hierarchical_models[part].params_local.setTo(0.0);
+		}
 
 		// calculate the local and global parameters from the generated 2D shape (mapping from the 2D to 3D because camera params are unknown)
 		clm_model.pdm.CalcParams(clm_model.params_global, bounding_box, clm_model.params_local, rotation_hypotheses[hypothesis]);
@@ -491,7 +502,18 @@ bool CLMTracker::DetectLandmarksInImage(const Mat_<uchar> &grayscale_image, cons
 			best_detected_landmarks = clm_model.detected_landmarks.clone();
 			best_landmark_likelihoods = clm_model.landmark_likelihoods.clone();
 			best_success = success;
+		}
 
+		for (size_t part = 0; part < clm_model.hierarchical_models.size(); ++part)
+		{
+			if (hypothesis == 0 || best_likelihood < clm_model.hierarchical_models[part].model_likelihood)
+			{
+				best_likelihood_h[part] = clm_model.hierarchical_models[part].model_likelihood;
+				best_global_parameters_h[part] = clm_model.hierarchical_models[part].params_global;
+				best_local_parameters_h[part] = clm_model.hierarchical_models[part].params_local.clone();
+				best_detected_landmarks_h[part] = clm_model.hierarchical_models[part].detected_landmarks.clone();
+				best_landmark_likelihoods_h[part] = clm_model.hierarchical_models[part].landmark_likelihoods.clone();
+			}
 		}
 
 	}
@@ -503,6 +525,15 @@ bool CLMTracker::DetectLandmarksInImage(const Mat_<uchar> &grayscale_image, cons
 	clm_model.detected_landmarks = best_detected_landmarks.clone();
 	clm_model.detection_success = best_success;
 	clm_model.landmark_likelihoods = best_landmark_likelihoods.clone();
+
+	for (size_t part = 0; part < clm_model.hierarchical_models.size(); ++part)
+	{
+		clm_model.hierarchical_models[part].params_global = best_global_parameters_h[part];
+		clm_model.hierarchical_models[part].params_local = best_local_parameters_h[part].clone();
+		clm_model.hierarchical_models[part].detected_landmarks = best_detected_landmarks_h[part].clone();
+		clm_model.hierarchical_models[part].landmark_likelihoods = best_landmark_likelihoods_h[part].clone();
+	}
+
 	return best_success;
 }
 
@@ -529,8 +560,14 @@ bool CLMTracker::DetectLandmarksInImage(const Mat_<uchar> &grayscale_image, cons
 		CLMTracker::DetectSingleFace(bounding_box, grayscale_image, clm_model.face_detector_HAAR);
 	}
 
-	return DetectLandmarksInImage(grayscale_image, depth_image, bounding_box, clm_model, params);
-
+	if(bounding_box.width == 0)
+	{
+		return false;
+	}
+	else
+	{
+		return DetectLandmarksInImage(grayscale_image, depth_image, bounding_box, clm_model, params);
+	}
 }
 
 // Versions not using depth images

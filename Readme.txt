@@ -69,21 +69,24 @@ After landmark detection is done clm_model stores the landmark locations and loc
 
 Head Pose:
 
-	// Head pose is stored in the following format (X, Y, Z, rot_x, roty_y, rot_z), translation is in millimeters with respect to camera and rotation is in radians around X,Y,Z axes with the convention R = Rx * Ry * Rz, left-handed positive sign, the rotation can be either with respect to camera or the camera plane (for visualisation we want rotation with respect to camera plane)
+	// Head pose is stored in the following format (X, Y, Z, rot_x, roty_y, rot_z)
+	// translation is in millimeters with respect to camera centre
+	// Rotation is in radians around X,Y,Z axes with the convention R = Rx * Ry * Rz, left-handed positive sign
+	// The rotation can be either with respect to camera or world coordinates (for visualisation we want rotation with respect to world coordinates)
 
 	There are four methods in total that can return the head pose
 	
 	//Getting the head pose w.r.t. camera assuming orthographic projection
 	Vec6d GetPoseCamera(CLM& clm_model, double fx, double fy, double cx, double cy, CLMParameters& params);
 	
-	//Getting the head pose w.r.t. camera plane assuming orthographic projection
-	Vec6d GetPoseCameraPlane(CLM& clm_model, double fx, double fy, double cx, double cy, CLMParameters& params);
+	//Getting the head pose w.r.t. world coordinates assuming orthographic projection
+	Vec6d GetPoseWorld(CLM& clm_model, double fx, double fy, double cx, double cy, CLMParameters& params);
 	
 	//Getting the head pose w.r.t. camera with a perspective camera correction
 	Vec6d GetCorrectedPoseCamera(CLM& clm_model, double fx, double fy, double cx, double cy, CLMParameters& params);
 
-	//Getting the head pose w.r.t. camera plane with a perspective camera correction
-	Vec6d GetCorrectedPoseCameraPlane(CLM& clm_model, double fx, double fy, double cx, double cy, CLMParameters& params);
+	//Getting the head pose w.r.t. world coordinates with a perspective camera correction
+	Vec6d GetCorrectedPoseWorld(CLM& clm_model, double fx, double fy, double cx, double cy, CLMParameters& params);
 
 	// fx,fy,cx,cy are camera callibration parameters needed to infer the 3D position of the head with respect to camera, a good assumption for webcams providing 640x480 images is 500, 500, img_width/2, img_height/2	
 	
@@ -92,15 +95,6 @@ Head Pose:
 These are provided for recreation of some of the experiments described in the papers and to demonstrate the command line interface for Windows.
 
 To run them you will need to change the dataset locations to those on your disc
-
-run_clm_head_pose_tests_svr.m - runs CLM, and CLM-Z on the 3 head pose datasets (Boston University, Biwi Kinect, and ICT-3DHP you need to acquire the datasets yourself)
-run_clm_head_pose_tests_clnf.m - runs CLNF on the 3 head pose datasets (Boston University, Biwi Kinect, and ICT-3DHP you need to acquire the datasets yourself)
-run_clm_feature_point_tests_wild.m - runs CLM and CLNF on the in the wild face datasets, using already defined bounding boxes of faces (these are produced using the 'matlab_runners/ExtractBoundingBoxes.m' script on the in the wild datasets from http://ibug.doc.ic.ac.uk/resources/300-W/)
-
-run_demo_images.m - runs CLNF on some sample images that come with the code
-run_demo_videos.m - runs CLNF on some sample videos that come with the code (some taken from the YouTube celebrity dataset)
-feature_extraction_demo_img_seq.m - Running the FeatureExtraction project, it demonstrates how to specify parameters for extracting a number of features from a sequence of images in a folder and how to read those features into Matlab.	
-feature_extraction_demo_vid.m - Running the FeatureExtraction project, it demonstrates how to specify parameters for extracting a number of features from a video and how to read those features into Matlab.	
 	
 -------- Command line parameters for video (SimpleCLM) --------------------------
 
@@ -118,12 +112,12 @@ Parameters for input (if nothing is specified attempts to read from a webcam wit
 	-cy <optical centre in y>
 
 Parameters for output
-	-op <location of output pose file>, the file format is as follows: frame_number confidence detection_success X Y Z Rx Ry Rz
-	-of <location of output landmark points file>, the file format is as follows: frame_number detection_success x_1 x_2 ... x_n y_1 y_2 ... y_n
-	-of3D <location of output 3D landmark points file>, the file format is as follows: frame_number detection_success X_1 X_2 ... X_n Y_1 Y_2 ... Y_n Z_1 Z_2 ... Z_n
+	-op <location of output pose file>, the file format is as follows: frame_number, timestamp(seconds), confidence, detection_success, X, Y, Z, Rx, Ry, Rz
+	-of <location of output landmark points file>, the file format is as follows: frame_number, timestamp(seconds), confidence, detection_success, x_1, x_2, ... x_n, y_1, y_2, ... y_n
+	-of3D <location of output 3D landmark points file>, the file format is as follows: frame_number, timestamp(seconds), confidence, detection_success, X_1, X_2 ... X_n, Y_1, Y_2, ... Y_n, Z_1, Z_2, ... Z_n
 	-ov <location of tracked video>
 
-    -cp <1/0, should rotation be measured with respect to the camera plane or camera, see Head pose section for more details>
+    -world_coord <1/0, should rotation be measured with respect to the world coordinates or camera, see Head pose section for more details>
 
 Model parameters (apply to images and videos)
 	-mloc <the location of CLM model>
@@ -141,6 +135,9 @@ All of the models (except CLM-Z) use a 68 point convention for tracking (see htt
 	
 For more examples of how to run the code, please refer to the Matlab runner code which calls the compiled executables with the command line parameters.
 	
+---- Note about timestamps ------
+OpenCV is not good at dealing with variable framerates in recorded videos (or sometimes at reporting the framerate of the video), so the timestamps will not always be accurate. However, the number of frames and their ordering will be correct.
+
 -------- Command line parameters for feature extraction from images, image sequences and videos (FeatureExtraction) --------------------------
 
 Parameters for input (if nothing is specified attempts to read from a webcam with default values). This module is still under development and experimental, let me know if something goes wrong.
@@ -162,16 +159,20 @@ Parameters for input (if nothing is specified attempts to read from a webcam wit
 Parameters for output
 	-outroot <the root directory relevant to which the output files are created> (optional)
 	
-	-op <location of output pose file>, the file format is as follows: frame_number confidence detection_success X Y Z Rx Ry Rz
-	-of <location of output landmark points file>, the file format is as follows: frame_number detection_success x_1 x_2 ... x_n y_1 y_2 ... y_n
-	-of3D <location of output 3D landmark points file>, the file format is as follows: frame_number detection_success X_1 X_2 ... X_n Y_1 Y_2 ... Y_n Z_1 Z_2 ... Z_n
+	-op <location of output pose file>, the file format is as follows: frame_number, timestamp(seconds), confidence, detection_success, X, Y, Z, Rx, Ry, Rz
+	-ogaze <location of output file>, the file format is as follows: frame_number, timestamp(seconds), confidence, detection_success, x_0, y_0, z_0, x_1, y_1, z_1, x_h0, y_h0, z_h0, x_h1, y_h1, z_h1
+		The gaze is output as 4 vectors, first two vectors are in world coordinate space describing the gaze direction of both eyes, the second two vectors describe the gaze in head coordinate space (so if the eyes are rolled up, the vectors will indicate up even if the head is turned or tilted)
+	-of <location of output landmark points file>, the file format is as follows: frame_number, timestamp(seconds), confidence, detection_success, x_1 x_2 ... x_n y_1 y_2 ... y_n
+	-of3D <location of output 3D landmark points file>, the file format is as follows: frame_number, timestamp(seconds), confidence, detection_success, X_1 X_2 ... X_n Y_1 Y_2 ... Y_n Z_1 Z_2 ... Z_n
 	-ov <location of tracked video>
 
-	-simaligndir <directory> output similarity aligned face images into the following directory
-	-simalignvid <filename> output similarity aligned face images into the following video
-	-hogalign <filename> output file for HOG features (FHOG of cell size 8) extracted from similarity aligned face images
-	-oparams <filename> output file for rigid and non-rigid shape parameters
-	-cp <1/0>, should rotation be measured with respect to the camera plane or camera, see Head pose section for more details>
+	-oparams <output geom params file>, the file format is as follows: frame_number, timestamp(seconds), confidence, detection_success, scale, rx, ry, rz, tx, ty, p0, p1, p2, p3, p4, p5, p6, p7, p8 ... (rigid and non rigid shape parameters)
+	-oaus <output AU file>, the file format is as follows: frame_number, timestamp(seconds), confidence, detection_success, AU01_r, AU02_r, AU04_r, ... (_r implies regression _c classification)
+	-hogalign <output HOG feature location>, outputs HOG in a binary file format (see ./matlab_runners/Demos/Read_HOG_files.m for a script to read it in Matlab)
+	-simalignvid <output video file of aligned faces>, outputs similarity aligned faces to a video (need HFYU video codec to read it)
+	-simaligndir <output directory for aligned face image>, same as above but instead of video the aligned faces are put in a directory
+
+	-world_coord <1/0>, should rotation be measured with respect to the camera or world coordinates, see Head pose section for more details>
 
 	Additional parameters for output
 	
@@ -242,6 +243,8 @@ or
 SimpleCLMImg.exe -fdir "../videos/" -ofdir "../matlab_runners/demo_img/" -oidir "../matlab_runners/demo_img/"
 
 Basic landmark tracking in videos. From Matlab run "matlab_runners/run_demo_video.m", alternatively go to Release folder and from command line execute: SimpleCLM.exe -f "../videos/changeLighting.wmv" -f "../videos/0188_03_021_al_pacino.avi" -f "../videos/0217_03_006_alanis_morissette.avi" -f "../videos/0244_03_004_anderson_cooper.avi" -f "../videos/0294_02_004_angelina_jolie.avi" -f "../videos/0417_02_003_bill_clinton.avi" -f "../videos/0490_03_007_bill_gates.avi" -f "../videos/0686_02_003_gloria_estefan.avi" -f "../videos/1034_03_006_jet_li.avi" -f "../videos/1192_01_006_julia_roberts.avi" -f "../videos/1461_01_021_noam_chomsky.avi" -f "../videos/1804_03_006_sylvester_stallone.avi" -f "../videos/1815_01_008_tony_blair.avi" -f "../videos/1869_03_009_victoria_beckham.avi" -f "../videos/1878_01_002_vladimir_putin.avi"
+
+More examples of how to use the command line and more demos can be found in the ./matlab_runners folder and in the Readme.txt there
 		
 ------------ Depth data ------------------------------------------------
 Currently depth stream is expected to be in the format of a collection of 8 or 16-bit .png files in a folder with a naming scheme: depth00001.png, depth00002.png, ... depthxxxxx.png, with each .png.
@@ -264,10 +267,10 @@ decision_boundary - this is used to determine when the SVM classifier thinks tha
 	
 Results that you should expect on running the code on the publicly available datasets can be found in:
 
-matlab_runners/results/landmark_detections.txt - the results on landmark detection on in the wild dataset
+matlab_runners/Feature Point Experiments/results/landmark_detections.txt - the results on landmark detection on in the wild dataset
 
-matlab_runners/results/Pose_clm_ccnf_v1.txt - the results of head pose tracking using CLNF on 3 datasets (BU, BIWI and ICT-3DHP)
-matlab_runners/results/Pose_clm_svr_v1.txt - the results of head pose tracking uding CLM and CLM-Zon 3 datasets (BU, BIWI and ICT-3DHP)
+matlab_runners/Head Pose Experiments/results/Pose_clm_ccnf_v1.txt - the results of head pose tracking using CLNF on 3 datasets (BU, BIWI and ICT-3DHP)
+matlab_runners/Head Pose Experiments/results/Pose_clm_svr_v1.txt - the results of head pose tracking uding CLM and CLM-Zon 3 datasets (BU, BIWI and ICT-3DHP)
 
 --------------------------------------- Final remarks -----------------------------------------------------------------------------	
 

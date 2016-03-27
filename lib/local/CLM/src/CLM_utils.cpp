@@ -98,7 +98,7 @@ void create_directories(string output_path)
 
 // Extracting the following command line arguments -f, -fd, -op, -of, -ov (and possible ordered repetitions)
 void get_video_input_output_params(vector<string> &input_video_files, vector<string> &depth_dirs,
-	vector<string> &output_pose_files, vector<string> &output_video_files, vector<string> &output_2d_landmark_files, vector<string> &output_3D_landmark_files, bool& camera_plane_pose, vector<string> &arguments)
+	vector<string> &output_pose_files, vector<string> &output_video_files, vector<string> &output_2d_landmark_files, vector<string> &output_3D_landmark_files, bool& world_coordinates, vector<string> &arguments)
 {
 	bool* valid = new bool[arguments.size()];
 
@@ -107,8 +107,8 @@ void get_video_input_output_params(vector<string> &input_video_files, vector<str
 		valid[i] = true;
 	}
 
-	// By default use rotation with respect to camera (not camera plane)
-	camera_plane_pose = false;
+	// By default use rotation with respect to camera (not world coordinates)
+	world_coordinates = false;
 
 	string root = "";
 	// First check if there is a root argument (so that videos and outputs could be defined more easilly)
@@ -170,9 +170,9 @@ void get_video_input_output_params(vector<string> &input_video_files, vector<str
 			valid[i+1] = false;
 			i++;
 		}		
-		else if (arguments[i].compare("-cp") == 0)
+		else if (arguments[i].compare("-world_coord") == 0)
 		{
-			camera_plane_pose = true;
+			world_coordinates = true;
 		}
 		else if (arguments[i].compare("-help") == 0)
 		{
@@ -252,12 +252,12 @@ void get_camera_params(int &device, float &fx, float &fy, float &cx, float &cy, 
 	}
 }
 
-void get_image_input_output_params(vector<string> &input_image_files, vector<string> &input_depth_files, vector<string> &output_feature_files, vector<string> &output_image_files,
+void get_image_input_output_params(vector<string> &input_image_files, vector<string> &input_depth_files, vector<string> &output_feature_files, vector<string> &output_pose_files, vector<string> &output_image_files,
 		vector<Rect_<double>> &input_bounding_boxes, vector<string> &arguments)
 {
 	bool* valid = new bool[arguments.size()];
 	
-	string out_pts_dir, out_img_dir;
+	string out_pts_dir, out_pose_dir, out_img_dir;
 
 	for(size_t i = 0; i < arguments.size(); ++i)
 	{
@@ -343,12 +343,27 @@ void get_image_input_output_params(vector<string> &input_image_files, vector<str
 			valid[i+1] = false;
 			i++;
 		}
-		else if (arguments[i].compare("-oidir") == 0) 
+		else if (arguments[i].compare("-opdir") == 0)
+		{
+			out_pose_dir = arguments[i + 1];
+			create_directories(out_pose_dir);
+			valid[i] = false;
+			valid[i + 1] = false;
+			i++;
+		}
+		else if (arguments[i].compare("-oidir") == 0)
 		{
 			out_img_dir = arguments[i + 1];
 			create_directories(out_img_dir);
 			valid[i] = false;
 			valid[i+1] = false;
+			i++;
+		}
+		else if (arguments[i].compare("-op") == 0)
+		{
+			output_pose_files.push_back(arguments[i + 1]);
+			valid[i] = false;
+			valid[i + 1] = false;
 			i++;
 		}
 		else if (arguments[i].compare("-of") == 0)
@@ -400,6 +415,19 @@ void get_image_input_output_params(vector<string> &input_image_files, vector<str
 			output_feature_files.push_back(out_pts_dir + "/" + fname.string());			
 		}
 		create_directory_from_file(output_feature_files[0]);
+	}
+
+	if (!out_pose_dir.empty())
+	{
+		for (size_t i = 0; i < input_image_files.size(); ++i)
+		{
+			path image_loc(input_image_files[i]);
+
+			path fname = image_loc.filename();
+			fname = fname.replace_extension("pose");
+			output_pose_files.push_back(out_pose_dir + "/" + fname.string());
+		}
+		create_directory_from_file(output_pose_files[0]);
 	}
 
 	// Make sure the same number of images and bounding boxes is present, if any bounding boxes are defined
@@ -999,7 +1027,7 @@ vector<cv::Point2d> CalculateLandmarks(CLM& clm_model)
 }
 
 // Drawing landmarks on a face image
-void Draw(cv::Mat img, const Mat_<double>& shape2D, Mat_<int>& visibilities)
+void Draw(cv::Mat img, const Mat_<double>& shape2D, const Mat_<int>& visibilities)
 {
 	int n = shape2D.rows/2;
 
@@ -1112,7 +1140,7 @@ void Draw(cv::Mat img, const Mat_<double>& shape2D)
 }
 
 // Drawing detected landmarks on a face image
-void Draw(cv::Mat img, CLM& clm_model)
+void Draw(cv::Mat img, const CLM& clm_model)
 {
 
 	int idx = clm_model.patch_experts.GetViewIdx(clm_model.params_global, 0);
@@ -1121,7 +1149,7 @@ void Draw(cv::Mat img, CLM& clm_model)
 	Draw(img, clm_model.detected_landmarks, clm_model.patch_experts.visibilities[0][idx]);
 
 	// If the model has hierarchical updates draw those too
-	for(int i = 0; i < clm_model.hierarchical_models.size(); ++i)
+	for(size_t i = 0; i < clm_model.hierarchical_models.size(); ++i)
 	{
 		if(clm_model.hierarchical_models[i].pdm.NumberOfPoints() != clm_model.hierarchical_mapping[i].size())
 		{

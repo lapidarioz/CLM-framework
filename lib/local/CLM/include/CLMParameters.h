@@ -119,6 +119,9 @@ struct CLMParameters
 	// Should the parameters be refined for different scales
 	bool refine_parameters;
 
+	// Using the brand new and experimental gaze tracker
+	bool track_gaze;
+
 	CLMParameters()
 	{
 		// initialise the default values
@@ -204,6 +207,13 @@ struct CLMParameters
 
 				valid[i] = false;
 				valid[i+1] = false;
+				i++;
+			}
+			else if (arguments[i].compare("-gaze") == 0)
+			{
+				track_gaze = true;
+
+				valid[i] = false;
 				i++;
 			}
 			else if (arguments[i].compare("-q") == 0) 
@@ -318,6 +328,9 @@ struct CLMParameters
 
 			// By default use HOG SVM
 			curr_face_detector = HOG_SVM_DETECTOR;
+
+			// The gaze tracking has to be explicitly initialised
+			track_gaze = false;
 		}
 };
 

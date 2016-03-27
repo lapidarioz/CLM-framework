@@ -72,7 +72,9 @@ CLM::CLM(string fname)
 
 // Copy constructor (makes a deep copy of CLM)
 CLM::CLM(const CLM& other): pdm(other.pdm), params_local(other.params_local.clone()), params_global(other.params_global), detected_landmarks(other.detected_landmarks.clone()),
-	landmark_likelihoods(other.landmark_likelihoods.clone()), patch_experts(other.patch_experts), landmark_validator(other.landmark_validator), face_detector_location(other.face_detector_location)
+	landmark_likelihoods(other.landmark_likelihoods.clone()), patch_experts(other.patch_experts), landmark_validator(other.landmark_validator), face_detector_location(other.face_detector_location),
+	hierarchical_mapping(other.hierarchical_mapping), hierarchical_models(other.hierarchical_models), hierarchical_model_names(other.hierarchical_model_names),
+	hierarchical_params(other.hierarchical_params)
 {
 	this->detection_success = other.detection_success;
 	this->tracking_initialised = other.tracking_initialised;
@@ -101,6 +103,7 @@ CLM::CLM(const CLM& other): pdm(other.pdm), params_local(other.params_local.clon
 	}
 
 	this->face_detector_HOG = dlib::get_frontal_face_detector();
+
 }
 
 // Assignment operator for lvalues (makes a deep copy of CLM)
@@ -548,48 +551,55 @@ bool CLM::DetectLandmarks(const Mat_<uchar> &image, const Mat_<float> &depth, CL
 	{
 		bool parts_used = false;		
 
-		// TODO this can be TBBified?
-		for(size_t part_model = 0; part_model < hierarchical_models.size(); ++part_model)
+		// Do the hierarchical models in parallel
+		tbb::parallel_for(0, (int)hierarchical_models.size(), [&](int part_model){
 		{
-			
-			int n_part_points = hierarchical_models[part_model].pdm.NumberOfPoints();
-
-			vector<pair<int,int>> mappings = this->hierarchical_mapping[part_model];
-
-			Mat_<double> part_model_locs(n_part_points * 2, 1, 0.0);
-
-			// Extract the corresponding landmarks
-			for (size_t mapping_ind = 0; mapping_ind < mappings.size(); ++mapping_ind)
+			// Only do the synthetic eye models if we're doing gaze
+			if (!((hierarchical_model_names[part_model].compare("right_eye_28") == 0 ||
+			hierarchical_model_names[part_model].compare("left_eye_28") == 0)
+			&& !params.track_gaze))
 			{
-				part_model_locs.at<double>(mappings[mapping_ind].second) = detected_landmarks.at<double>(mappings[mapping_ind].first);
-				part_model_locs.at<double>(mappings[mapping_ind].second + n_part_points) = detected_landmarks.at<double>(mappings[mapping_ind].first + this->pdm.NumberOfPoints());
-			}
-						
-			// Fit the part based model PDM
-			hierarchical_models[part_model].pdm.CalcParams(hierarchical_models[part_model].params_global, hierarchical_models[part_model].params_local, part_model_locs);	
-			
-			// Only do this if we don't need to upsample
-			if(params_global[0] > 0.9 * hierarchical_models[part_model].patch_experts.patch_scaling[0])
-			{
-				parts_used = true;
 
-				this->hierarchical_params[part_model].window_sizes_current = this->hierarchical_params[part_model].window_sizes_init;
+				int n_part_points = hierarchical_models[part_model].pdm.NumberOfPoints();
 
-				// Do the actual landmark detection
-				hierarchical_models[part_model].DetectLandmarks(image, depth, hierarchical_params[part_model]);
+				vector<pair<int, int>> mappings = this->hierarchical_mapping[part_model];
 
-				// Reincorporate the models into main tracker
+				Mat_<double> part_model_locs(n_part_points * 2, 1, 0.0);
+
+				// Extract the corresponding landmarks
 				for (size_t mapping_ind = 0; mapping_ind < mappings.size(); ++mapping_ind)
 				{
-					detected_landmarks.at<double>(mappings[mapping_ind].first) = hierarchical_models[part_model].detected_landmarks.at<double>(mappings[mapping_ind].second);
-					detected_landmarks.at<double>(mappings[mapping_ind].first + pdm.NumberOfPoints()) = hierarchical_models[part_model].detected_landmarks.at<double>(mappings[mapping_ind].second + hierarchical_models[part_model].pdm.NumberOfPoints());
+					part_model_locs.at<double>(mappings[mapping_ind].second) = detected_landmarks.at<double>(mappings[mapping_ind].first);
+					part_model_locs.at<double>(mappings[mapping_ind].second + n_part_points) = detected_landmarks.at<double>(mappings[mapping_ind].first + this->pdm.NumberOfPoints());
+				}
+
+				// Fit the part based model PDM
+				hierarchical_models[part_model].pdm.CalcParams(hierarchical_models[part_model].params_global, hierarchical_models[part_model].params_local, part_model_locs);
+
+				// Only do this if we don't need to upsample
+				if (params_global[0] > 0.9 * hierarchical_models[part_model].patch_experts.patch_scaling[0])
+				{
+					parts_used = true;
+
+					this->hierarchical_params[part_model].window_sizes_current = this->hierarchical_params[part_model].window_sizes_init;
+
+					// Do the actual landmark detection
+					hierarchical_models[part_model].DetectLandmarks(image, depth, hierarchical_params[part_model]);
+
+					// Reincorporate the models into main tracker
+					for (size_t mapping_ind = 0; mapping_ind < mappings.size(); ++mapping_ind)
+					{
+						detected_landmarks.at<double>(mappings[mapping_ind].first) = hierarchical_models[part_model].detected_landmarks.at<double>(mappings[mapping_ind].second);
+						detected_landmarks.at<double>(mappings[mapping_ind].first + pdm.NumberOfPoints()) = hierarchical_models[part_model].detected_landmarks.at<double>(mappings[mapping_ind].second + hierarchical_models[part_model].pdm.NumberOfPoints());
+					}
+				}
+				else
+				{
+					hierarchical_models[part_model].pdm.CalcShape2D(hierarchical_models[part_model].detected_landmarks, hierarchical_models[part_model].params_local, hierarchical_models[part_model].params_global);
 				}
 			}
-			else
-			{
-				hierarchical_models[part_model].pdm.CalcShape2D(hierarchical_models[part_model].detected_landmarks, hierarchical_models[part_model].params_local, hierarchical_models[part_model].params_global);
-			}
 		}
+		});
 
 		// Recompute main model based on the fit part models
 		if(parts_used)
@@ -1154,7 +1164,7 @@ bool CLM::RemoveBackground(Mat_<float>& out_depth_image, const Mat_<float>& dept
 }
 
 // Getting a 3D shape model from the current detected landmarks (in camera space)
-Mat_<double> CLM::GetShape(double fx, double fy, double cx, double cy)
+Mat_<double> CLM::GetShape(double fx, double fy, double cx, double cy) const
 {
 	int n = this->detected_landmarks.rows/2;
 

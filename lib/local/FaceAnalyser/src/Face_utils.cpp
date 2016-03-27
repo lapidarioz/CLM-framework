@@ -38,7 +38,7 @@
 //       reports and manuals, must cite one of the following works:
 //
 //       Tadas Baltrusaitis, Marwa Mahmoud, and Peter Robinson.
-//		 Cross-dataset learning and person-speci?c normalisation for automatic Action Unit detection
+//		 Cross-dataset learning and person-specific normalisation for automatic Action Unit detection
 //       Facial Expression Recognition and Analysis Challenge 2015,
 //       IEEE International Conference on Automatic Face and Gesture Recognition, 2015
 //
@@ -51,7 +51,7 @@
 using namespace cv;
 using namespace std;
 
-namespace FaceAnalyser
+namespace FaceAnalysis
 {
 
 	// Pick only the more stable/rigid points under changes of expression

@@ -70,11 +70,11 @@ namespace CLMTracker
 	// Helper functions for parsing the inputs
 	//=============================================================================================
 	void get_video_input_output_params(vector<string> &input_video_file, vector<string> &depth_dir,
-		vector<string> &output_pose_file, vector<string> &output_video_file, vector<string> &output_landmark_files, vector<string> &output_3D_landmark_files, bool& camera_plane_pose, vector<string> &arguments);
+		vector<string> &output_pose_file, vector<string> &output_video_file, vector<string> &output_landmark_files, vector<string> &output_3D_landmark_files, bool& world_coordinates_pose, vector<string> &arguments);
 
 	void get_camera_params(int &device, float &fx, float &fy, float &cx, float &cy, vector<string> &arguments);
 
-	void get_image_input_output_params(vector<string> &input_image_files, vector<string> &input_depth_files, vector<string> &output_feature_files, vector<string> &output_image_files,
+	void get_image_input_output_params(vector<string> &input_image_files, vector<string> &input_depth_files, vector<string> &output_feature_files, vector<string> &output_pose_files, vector<string> &output_image_files,
 		vector<Rect_<double>> &input_bounding_boxes, vector<string> &arguments);
 
 	//===========================================================================
@@ -111,9 +111,9 @@ namespace CLMTracker
 	vector<Point2d> CalculateLandmarks(CLM& clm_model);
 	void DrawLandmarks(cv::Mat img, vector<Point> landmarks);
 
-	void Draw(cv::Mat img, const Mat_<double>& shape2D, Mat_<int>& visibilities);
+	void Draw(cv::Mat img, const Mat_<double>& shape2D, const Mat_<int>& visibilities);
 	void Draw(cv::Mat img, const Mat_<double>& shape2D);
-	void Draw(cv::Mat img, CLM& clm_model);
+	void Draw(cv::Mat img, const CLM& clm_model);
 
 
 	//===========================================================================
