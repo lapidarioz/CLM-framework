@@ -5,7 +5,7 @@
 
 
 #include <CLMTracker.h>
-#include <PoseDetectorHaar.h>
+//#include <PoseDetectorHaar.h>
 #include <Avatar.h>
 #include <PAW.h>
 #include <CLM.h>

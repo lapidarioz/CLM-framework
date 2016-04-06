@@ -4,18 +4,19 @@
 #define GLEW_STATIC
 
 //freeglut is version freeglut 2.6.0-3.mp for MSVC
-#include "glew.h"
-#include "wglew.h"
+//#include "glew.h"
+//#include "wglew.h"
+#include "GL/glew.h"
+
 #include "GL/freeglut.h"
 
 // TODO unix compatibility
-#pragma comment(lib, "opengl32.lib")
+//#pragma comment(lib, "opengl32.lib")
 //#pragma comment(lib, "glew32s.lib")
 
 #include "Avatar.h"
-#include <cv.h>
-
-#include <highgui.h>
+#include <opencv2/core/core.hpp>
+#include <opencv2/highgui/highgui.hpp>
 
 bool DISPLAYHISTOGRAMS = false;			//set to 'true' to display three histograms from the CompensateColour operation
 bool KIOSKMODE = false;
@@ -882,7 +883,7 @@ void faceAnimate(const Mat& original_image_bgr, const Mat_<double>& shape_origin
 	if(INIT != true ) {
 		char *myargv [1];
 		int myargc=1;
-		myargv [0]=_strdup ("Myappname");
+		myargv [0]=strdup("Myappname");
 		initGL(1, myargv, aspect_ratio_img_global);
 		INIT = true;
 	}		

@@ -4,7 +4,7 @@
 #define __AVATAR_h_
 
 #include <GL/glut.h>
-#include <cv.h>
+#include <opencv2/core/core.hpp>
 #include <CLM_core.h>
 
 using namespace std;
